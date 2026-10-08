@@ -79,6 +79,17 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt
 const list = a => Array.isArray(a) && a.length ? `<ul>${a.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : '<p class="empty">Not found</p>';
 let activeId = null;
 
+// Read a response safely, so a server error shows a clear message instead of "not valid JSON"
+async function readJson(res) {
+  const text = await res.text();
+  try { return JSON.parse(text); }
+  catch {
+    if (res.status === 404) throw new Error('The research function was not found (404). Check that api/research.js is inside an "api" folder on GitHub.');
+    if (res.status === 504) throw new Error('The research took too long and timed out. Try again.');
+    throw new Error(`Server error ${res.status}: ${text.slice(0, 120)}`);
+  }
+}
+
 function setStatus(msg, isError = false) {
   $('status').textContent = msg;
   $('status').className = 'status' + (isError ? ' error' : '');
@@ -112,7 +123,7 @@ function showBrief(row) {
 async function loadHistory() {
   try {
     const res = await fetch('/api/research');
-    const rows = await res.json();
+    const rows = await readJson(res);
     if (!res.ok) throw new Error(rows.error);
     $('history').innerHTML = rows.length
       ? rows.map(r => `<li><button data-id="${r.id}" class="${r.id === activeId ? 'active' : ''}">${esc(r.company)}<small>${new Date(r.created_at).toLocaleDateString()}</small></button></li>`).join('')
@@ -123,7 +134,7 @@ async function loadHistory() {
 $('history').addEventListener('click', async e => {
   const btn = e.target.closest('button'); if (!btn) return;
   const res = await fetch(`/api/research?id=${btn.dataset.id}`);
-  const row = await res.json();
+  const row = await readJson(res);
   if (row) showBrief(row);
 });
 
@@ -137,7 +148,7 @@ $('form').addEventListener('submit', async e => {
     const res = await fetch('/api/research', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ company })
     });
-    const row = await res.json();
+    const row = await readJson(res);
     if (!res.ok) throw new Error(row.error);
     setStatus('Done. Brief saved for the team.');
     $('company').value = '';
